@@ -1,0 +1,6 @@
+tqdm
+pandas
+pytesseract
+pdf2image
+requests
+langdetect
