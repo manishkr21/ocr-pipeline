@@ -1,180 +1,143 @@
-#    params["regno"] = regno
-#    print(regno)
-#    params["key"] = regno[0:5]
-#    download_url = base_url + urllib.parse.urlencode(params)
-#    response = requests.get(download_url, allow_redirects=True )
-#    temp = response.json()
-#    if "Document" in temp:
-#        doc = base64.b64decode(temp["Document"])
-#        fname = regno.replace("/", "-") + ".pdf"
-#        (BASE_DIR1 / fname).write_bytes(doc)
-#        return "yes"
-#    else:
-#        return regno
+import pandas as pd
+import numpy as np
+import sqlalchemy
+import pymysql
+import sys
+import os
+import shutil
+
+#Database Connection
+engine = sqlalchemy.create_engine("mysql+pymysql://cpgrams:rajnath@localhost/cpgrams")
+connection = engine.connect()
+
+#Query
+count_query="select count(*) as count from pdfdata"
+find_query="select count(*) as count from pdfdata where regno ='{0}'"
+
+# find existing registration numbers
+curr_length=int(pd.read_sql(count_query,con=connection)['count'])
+print("Number of records in pdf_data = ", curr_length)
 
 
-
-# if pdf exist then it direct to download_pdf otherwise store the info into NO_PDF_FOUND.TXT
-# def fetch_pdf(filename):
-#     with concurrent.futures.ThreadPoolExecutor() as e:
-#         f=open('NO_PDF_FOUND.TXT','a')
-
-#         with open(filename) as pmopg:
-#             f2r = {e.submit(download_pdf, reg.strip()): reg.strip() for reg in pmopg}
-
-#             for future in concurrent.futures.as_completed(f2r):
-#                 regno = f2r[future]
-#                 print(regno)
-#                 try:
-#                     data = future.result()
-#                 except Exception as exc:
-#                     f.write(regno + '\n')
-#                     f.flush()
-#                 else:
-#                     if data is not None:
-#                         f.write(regno + '\n')
-#                         f.flush()
-#         f.close()
+####################################################################################################>
 
 
-# fetch the image from the pdf
-def pdf_to_image(dir):
-    for pdf in tqdm(os.listdir(dir)):
-        pdf_name=pdf.split('.')
-        print(pdf_name[0])
-        image_path='./'+str(BASE_DIR2)+'/'+pdf_name[0]
-        image_num=1
-        if os.path.exists(image_path):
-            continue
-        try:
-            if os.path.getsize(str(BASE_DIR1)+'/'+pdf)<1900000:
-                pages=convert_from_path(str(BASE_DIR1)+'/'+pdf,300)
-                print(len(pages))
-                os.mkdir(image_path)
-                for page in pages:
-                    image_name='page_'+str(image_num)+'.jpg'
-                    page.save(image_path+'/'+image_name,'JPEG')
-                    image_num+=1
-        except:
-            continue
+# basic lib require to implement the funtions
+from tracemalloc import start
+from tqdm import tqdm
+from pathlib import Path
+import pandas as pd
 
 
+# lib to convert pdf to images
+import pytesseract
+from pdf2image import *
 
 
-# using tesseract extract the text data from the given path
-def image_to_data(dir):
-
-    for folder in tqdm(os.listdir(dir)):
-
-
-        images_path='./'+str(BASE_DIR2)+'/'+folder
-        print(images_path)
-        images=os.listdir(images_path)
-        text_file=open('./'+str(BASE_DIR3)+'/'+folder+'.txt','w', encoding='utf-16')
-
-        if os.path.exists('./'+str(BASE_DIR3)+'/'+folder+'.txt'):
-            continue
-        try:
-            for num in range(1,len(images)+1):
-
-                image_path=images_path+'/page_'+str(num)+'.jpg'
-                print(image_path)
-                text=pytesseract.image_to_string(Image.open(image_path), lang='eng')
-
-                text=text.replace('-\n','')
-                text_file.write(text)
-            text_file.close()
-        except:
-            print("An Exception is occured")
-
-
-#  funtion to preprocess the data
-import re
-def pre_process(text):
-
-    # lowercase
-    text=text.lower()
-
-    #remove tags
-    text=re.sub("</?.*?>"," <> ",text)
-
-    # remove special characters
-    text=re.sub("(\\W)+"," ",text)
-
-    return text
-
-
-# stored pdf data into mysql database
-# def save_text_into_database(dir):
-#     list_of_data = []
-#     for data in os.listdir(dir):
-#         docname = data.split('.')
-#         reg_no = docname[0].replace('-',"/")
-
-#         filename = open("./DATA_FILES/"+data,'r', encoding='utf-16')
-#         list_of_data.append([str(reg_no),str(filename.readlines())])
-
-#     # Create the pandas DataFrame
-#     df = pd.DataFrame(list_of_data, columns=['regno', 'pdf_data'])
-#     df['pdf_data'] = df['pdf_data'].apply(lambda x:pre_process(x))
-
-#     list_data = df.to_dict('records')
-
-#     import sqlalchemy
-#     engine = sqlalchemy.create_engine('mysql://cpgrams:rajnath@localhost/cpgrams')
-
-#     # create the test environment
-#     with engine.begin() as conn:
-#         conn.exec_driver_sql("DROP TABLE IF EXISTS table2")
-#         conn.exec_driver_sql(
-#             """
-#             CREATE TABLE table2 (
-#             regno varchar(50) primary key,
-#             pdf_data longtext
-#             )
-#             """
-#         )
-
-#     df_data = pd.DataFrame(list_data)
-
-#     # run the test
-#     with engine.begin() as conn:
-
-#         sql = """
-#             INSERT INTO table2 (regno, pdf_data) VALUES
-#             (:regno,:pdf_data)
-#             """
-#         params = df_data.to_dict("records")
-#         print(len(params))
-#         conn.execute(sqlalchemy.text(sql), params)
+# lib to generate the data with the help of pytesseract
+import time
+from PIL import Image
+from langdetect import detect_langs
+# pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
 
 
 # location where pdf file will store
 BASE_DIR1 = Path("/tmp")
 BASE_DIR1.mkdir(exist_ok=True)
 
-# # location where image file will store
+# location where image file will store
 BASE_DIR2 = Path("IMAGE_FILES")
 BASE_DIR2.mkdir(exist_ok=True)
 
-# # location where text data will store
-BASE_DIR3 = Path("DATA_FILES")
-BASE_DIR3.mkdir(exist_ok=True)
+# get daily regsitration numbers
+get_regno="SELECT regno from livedata where DocumentUrl='{0}' is not null AND reciveddate='{1}'"
 
-# start_time=time.time()
-# # fetch_pdf("REGISTRATION_NOS.TXT")
-# print("\n****************DOWNLOADING THE PDF DATA****************\n")
-# fetch_pdf("rough.txt")
 
-# print("\n****************CONVERT THE DOCUMENT INTO IMAGES****************\n")
-pdf_to_image(BASE_DIR1)   # call fn to generate the pdfs
+import itertools
 
-# print("\n****************APPLY TESSERACT TO CONVERT THE IMAGE INTO TEXTFILE****************\n")
-image_to_data(BASE_DIR2)
+# funtion to convert data into chunks     [list of reg no]  --> [chunks of regno]
+def batched(iterable, n):
+    "Batch data into tuples of length n. The last batch may be shorter."
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        raise ValueError('n must be at least one')
+    it = iter(iterable)
+    while (batch := tuple(itertools.islice(it, n))):
+        yield batch
 
-# print("\n****************SAVE THE TEXT DATA INTO DATABASE****************\n")
-# save_text_into_database(BASE_DIR3)
+#  funtion to preprocess the data
+import re
+def pre_process(text):
+    
+    # lowercase
+    text=text.lower()
+    
+    #remove tags
+    text=re.sub("</?.*?>"," <> ",text)
+    
+    # remove special characters 
+    text=re.sub("(\\W)+"," ",text)
+    
+    return text
 
-# print("\n****************TIME TAKEN****************\n")
-# end_time=time.time()
-# print(end_time - start_time)
+
+# make chunks of regno to work on
+l=sorted(os.listdir(BASE_DIR1))
+chunked_rno = batched(l,10)
+
+for chunk in chunked_rno:
+    
+    data = []
+    for regno in chunk:
+        
+        
+
+        # convert pdf into image
+        pdf_name=regno.split('.')[0]
+
+        regno_exist = int(pd.read_sql(find_query.format(pdf_name), con=connection)['count'])
+        if regno_exist==1:
+            continue
+
+        print(pdf_name)
+        image_path=str(BASE_DIR2)+'/'+pdf_name
+        image_num=1
+
+        #if os.path.getsize(str(BASE_DIR1)+'/'+regno)<1900000
+        pages=convert_from_path(str(BASE_DIR1)+'/'+regno,300)
+
+        image_dir = Path(image_path)        
+        image_dir.mkdir(exist_ok = True)
+        for page in pages:
+            image_name='page_'+str(image_num)+'.jpg'
+            page.save(image_path+'/'+image_name,'JPEG')
+            image_num+=1
+
+        # convert image to text data
+        images_path=str(BASE_DIR2)+'/'+pdf_name
+        images=os.listdir(images_path)
+        text_dict={}
+        fnl_text = str()
+        for num in range(1,len(images)+1):
+
+            image_path=images_path+'/page_'+str(num)+'.jpg'
+            text=pytesseract.image_to_string(Image.open(image_path), lang='eng')
+            text=text.replace('-\n','')
+            fnl_text += text
+
+        text_dict['regno'] = pdf_name
+        text_dict['data'] = fnl_text
+        data.append(text_dict)
+        
+    print("*********************data is created to insert**********************")
+    df = pd.DataFrame.from_dict(data)
+    
+    df.to_sql('pdfdata', engine, if_exists='append', index=False)
+    
+    print("*********************data Inserted**********************************")
+    for item in data:
+        rno=item['regno']
+        os.remove(str(BASE_DIR1)+rno+'.pdf')
+        shutil.rmtree(str(BASE_DIR2)+rno, ignore_errors=False, onerror=None) 
+connection.close()
+
