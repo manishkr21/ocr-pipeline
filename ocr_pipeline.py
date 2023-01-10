@@ -89,55 +89,57 @@ for chunk in chunked_rno:
     
     data = []
     for regno in chunk:
-        
-        
+               
+        try:
 
-        # convert pdf into image
-        pdf_name=regno.split('.')[0]
+            # convert pdf into image
+            pdf_name=regno.split('.')[0]
 
-        regno_exist = int(pd.read_sql(find_query.format(pdf_name), con=connection)['count'])
-        if regno_exist==1:
+            regno_exist = int(pd.read_sql(find_query.format(pdf_name), con=connection)['count'])
+            if regno_exist==1:
+                continue
+
+            print(pdf_name)
+            image_path=str(BASE_DIR2)+'/'+pdf_name
+            image_num=1
+
+            #if os.path.getsize(str(BASE_DIR1)+'/'+regno)<1900000
+            pages=convert_from_path(str(BASE_DIR1)+'/'+regno,300)
+
+            image_dir = Path(image_path)        
+            image_dir.mkdir(exist_ok = True)
+            for page in pages:
+                image_name='page_'+str(image_num)+'.jpg'
+                page.save(image_path+'/'+image_name,'JPEG')
+                image_num+=1
+
+            # convert image to text data
+            images_path=str(BASE_DIR2)+'/'+pdf_name
+            images=os.listdir(images_path)
+            text_dict={}
+            fnl_text = str()
+            for num in range(1,len(images)+1):
+
+                image_path=images_path+'/page_'+str(num)+'.jpg'
+                text=pytesseract.image_to_string(Image.open(image_path), lang='eng')
+                text=text.replace('-\n','')
+                fnl_text += text
+
+            text_dict['regno'] = pdf_name
+            text_dict['data'] = fnl_text
+            data.append(text_dict)
+        except:
             continue
-
-        print(pdf_name)
-        image_path=str(BASE_DIR2)+'/'+pdf_name
-        image_num=1
-
-        #if os.path.getsize(str(BASE_DIR1)+'/'+regno)<1900000
-        pages=convert_from_path(str(BASE_DIR1)+'/'+regno,300)
-
-        image_dir = Path(image_path)        
-        image_dir.mkdir(exist_ok = True)
-        for page in pages:
-            image_name='page_'+str(image_num)+'.jpg'
-            page.save(image_path+'/'+image_name,'JPEG')
-            image_num+=1
-
-        # convert image to text data
-        images_path=str(BASE_DIR2)+'/'+pdf_name
-        images=os.listdir(images_path)
-        text_dict={}
-        fnl_text = str()
-        for num in range(1,len(images)+1):
-
-            image_path=images_path+'/page_'+str(num)+'.jpg'
-            text=pytesseract.image_to_string(Image.open(image_path), lang='eng')
-            text=text.replace('-\n','')
-            fnl_text += text
-
-        text_dict['regno'] = pdf_name
-        text_dict['data'] = fnl_text
-        data.append(text_dict)
         
-    print("*********************data is created to insert**********************")
+    print("*********************Data Created***********************************")
     df = pd.DataFrame.from_dict(data)
     
     df.to_sql('pdfdata', engine, if_exists='append', index=False)
     
-    print("*********************data Inserted**********************************")
+    print("*********************Data Inserted**********************************")
     for item in data:
         rno=item['regno']
-        os.remove(str(BASE_DIR1)+rno+'.pdf')
-        shutil.rmtree(str(BASE_DIR2)+rno, ignore_errors=False, onerror=None) 
+        os.remove(str(BASE_DIR1)+'/'+rno+'.pdf')
+        shutil.rmtree(str(BASE_DIR2)+'/'+rno, ignore_errors=False, onerror=None) 
 connection.close()
 
