@@ -19,3 +19,4 @@ pytz
 six
 SQLAlchemy
 urllib3
+pymysql
